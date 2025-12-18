@@ -1,575 +1,486 @@
-// src/ui.rs
-// UI helpers + styling tokens for TAS.
-// (Code/comments in English as requested.)
-
 use iced::{
-    border, gradient,
-    widget::{button, container, scrollable, text, Column, Row, Space},
-    Alignment, Background, Color, Element, Length, Shadow, Theme, Vector,
+    border, gradient, Alignment, Background, Border, Color, Element, Length, Padding, Radians,
+    Shadow, Theme, Vector,
 };
+use iced::widget::{button, container, text, Column, Row, Space};
 
-use gradient::{Gradient, Linear};
+use crate::app::{AppState, Message, Route, APP_NAME};
 
-use crate::app::{AppState, Message, Route};
+// Simplificamos el tipo para uso interno
+pub type E<'a> = Element<'a, Message>;
 
-type E<'a> = Element<'a, Message>;
+const APP_SLOGAN: &str = "Where Reality Begins.";
 
 #[derive(Debug, Clone, Copy)]
 pub struct Tokens {
     pub background: Color,
+    pub foreground: Color,
+    pub muted_fg: Color,
+
+    // Surfaces
     pub shell_a: Color,
     pub shell_b: Color,
-
     pub card: Color,
     pub popover: Color,
     pub sidebar_bg: Color,
 
+    // Lines & states
     pub border: Color,
-    pub foreground: Color,
-    pub foreground_muted: Color,
+    pub input_border: Color,
+    pub hover_bg: Color,
+    pub active_bg: Color,
 
-    pub accent_purple: Color, // kept for future use (not used for buttons/active now)
-    pub accent_teal: Color,   // kept for future use (not used for buttons/active now)
-    pub danger: Color,
-
-    pub shadow: Color,
-}
-
-pub fn alpha(mut c: Color, a: f32) -> Color {
-    c.a = a;
-    c
+    // Radii
+    pub radius_xl: f32,
+    pub radius_lg: f32,
 }
 
 impl Tokens {
     pub fn nub_dark() -> Self {
-        // Slightly brighter right-side feel comes mostly from shell gradient + higher opacities.
-        // Sidebar now uses the same tonal family as cards (no transparent strip).
+        let white = Color::from_rgba8(0xFF, 0xFF, 0xFF, 1.0);
+
         Self {
             background: Color::from_rgba8(0x00, 0x00, 0x00, 1.0),
+            foreground: Color::from_rgba8(0xF2, 0xF2, 0xF2, 1.0),
+            muted_fg: Color::from_rgba8(0xA7, 0xA8, 0xAB, 0.82),
 
-            // +~5% brightness vs previous to avoid "too black" while staying premium.
-            shell_a: Color::from_rgba8(0x2E, 0x2D, 0x2D, 1.0),
-            shell_b: Color::from_rgba8(0x23, 0x22, 0x22, 1.0),
+            // Shell Gradient
+            shell_a: Color::from_rgba8(0x27, 0x26, 0x26, 1.0),
+            shell_b: Color::from_rgba8(0x1E, 0x1D, 0x1D, 1.0),
 
+            // Surfaces
             card: Color::from_rgba8(0x1D, 0x1D, 0x1D, 0.86),
-            popover: Color::from_rgba8(0x1D, 0x1D, 0x1D, 0.92),
+            popover: Color::from_rgba8(0x1D, 0x1D, 0x1D, 0.94),
 
-            // IMPORTANT: sidebar now solid (same family as cards) to remove the light strip.
-            sidebar_bg: Color::from_rgba8(0x1D, 0x1D, 0x1D, 0.90),
+            // Sidebar: Totalmente opaco para evitar mezcla de colores
+            sidebar_bg: Color::from_rgba8(0x1B, 0x1B, 0x1B, 1.0),
 
-            border: alpha(Color::WHITE, 0.10),
+            border: alpha(white, 0.08),
+            input_border: alpha(white, 0.14),
 
-            foreground: Color::from_rgb8(0xEF, 0xEF, 0xEF),
-            foreground_muted: alpha(Color::WHITE, 0.55),
+            hover_bg: alpha(white, 0.05),
+            active_bg: alpha(white, 0.07),
 
-            accent_purple: Color::from_rgb8(0x7C, 0x3A, 0xF2),
-            accent_teal: Color::from_rgb8(0x2D, 0xC9, 0xC3),
-
-            danger: Color::from_rgb8(0xE3, 0x5B, 0x5B),
-
-            shadow: alpha(Color::BLACK, 0.40),
+            radius_xl: 20.0,
+            radius_lg: 14.0,
         }
     }
 }
 
-pub fn container_style(bg: Color, fg: Color) -> container::Style {
-    container::Style {
+fn alpha(mut c: Color, a: f32) -> Color {
+    c.a = a;
+    c
+}
+
+// Estilo base para contenedores
+pub fn container_style(bg: Color, fg: Color) -> iced::widget::container::Style {
+    iced::widget::container::Style {
         text_color: Some(fg),
-        background: Some(bg.into()),
-        border: border::rounded(0.0),
+        background: Some(Background::Color(bg)),
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: border::Radius::from(0.0),
+        },
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 
-fn shell_style(t: Tokens) -> container::Style {
-    let bg = Background::Gradient(Gradient::Linear(
-        Linear::new(0.0).add_stop(0.0, t.shell_a).add_stop(1.0, t.shell_b),
-    ));
+fn shell_style(t: Tokens) -> iced::widget::container::Style {
+    let grad = gradient::Linear::new(Radians::PI / 4.0)
+        .add_stop(0.0, t.shell_a)
+        .add_stop(1.0, t.shell_b);
 
-    container::Style {
+    iced::widget::container::Style {
         text_color: Some(t.foreground),
-        background: Some(bg),
-        border: border::rounded(0.0),
+        background: Some(grad.into()),
+        border: Border {
+            color: Color::TRANSPARENT,
+            width: 0.0,
+            radius: border::Radius::from(0.0),
+        },
         shadow: Shadow::default(),
+        snap: false,
     }
 }
 
+/// Fondo principal de la ventana
 pub fn shell<'a>(t: Tokens, content: E<'a>) -> E<'a> {
-    // Full-bleed shell (no "window inside window", no colored circles).
     container(content)
-        .padding(0)
         .width(Length::Fill)
         .height(Length::Fill)
         .style(move |_| shell_style(t))
         .into()
 }
 
-fn card_style(t: Tokens) -> container::Style {
-    container::Style {
-        text_color: Some(t.foreground),
-        background: Some(t.card.into()),
-        border: border::Border {
-            color: alpha(Color::WHITE, 0.10),
-            width: 1.0,
-            radius: 18.0.into(),
-        },
-        shadow: Shadow {
-            color: alpha(Color::BLACK, 0.35),
-            offset: Vector::new(0.0, 10.0),
-            blur_radius: 28.0,
-        },
+/// Padding estándar para las páginas (Overview, Forge, etc.)
+pub fn page_padding<'a>(content: E<'a>) -> E<'a> {
+    container(content)
+        .padding(Padding {
+            top: 18.0,
+            right: 24.0,
+            bottom: 22.0,
+            left: 18.0,
+        })
+        .width(Length::Fill)
+        .into()
+}
+
+pub fn section_title(t: Tokens, title: String, subtitle: Option<String>) -> Element<'static, Message> {
+    let mut col = Column::new().spacing(4);
+    col = col.push(text(title).size(28).color(t.foreground));
+    if let Some(s) = subtitle {
+        col = col.push(text(s).size(12).color(t.muted_fg));
     }
+    col.into()
 }
 
 pub fn card<'a>(t: Tokens, content: E<'a>) -> E<'a> {
     container(content)
-        .padding(18)
+        .padding(16)
         .width(Length::Fill)
-        .style(move |_| card_style(t))
-        .into()
-}
-
-// This is the "Arhelis pill" look — we reuse it for hover/active everywhere.
-fn pill_bg_style(t: Tokens) -> container::Style {
-    container::Style {
-        text_color: Some(t.foreground),
-        background: Some(alpha(Color::WHITE, 0.06).into()),
-        border: border::Border {
-            color: alpha(Color::WHITE, 0.10),
-            width: 1.0,
-            radius: 999.0.into(),
-        },
-        shadow: Shadow::default(),
-    }
-}
-
-pub fn pill<'a>(t: Tokens, content: E<'a>) -> E<'a> {
-    container(content)
-        .padding([8, 12])
-        .style(move |_| pill_bg_style(t))
-        .into()
-}
-
-pub fn h_divider(t: Tokens) -> E<'static> {
-    container(Space::new(Length::Fill, Length::Fixed(1.0)))
-        .style(move |_| container_style(alpha(Color::WHITE, 0.06), t.foreground))
-        .into()
-}
-
-pub fn v_divider(t: Tokens) -> E<'static> {
-    container(Space::new(Length::Fixed(1.0), Length::Fill))
-        .style(move |_| container_style(alpha(Color::WHITE, 0.06), t.foreground))
-        .into()
-}
-
-pub fn section_title(t: Tokens, title: String, subtitle: Option<String>) -> E<'static> {
-    let mut col = Column::new().spacing(6);
-    col = col.push(text(title).size(28));
-
-    if let Some(sub) = subtitle {
-        col = col.push(text(sub).size(14).style(move |_| iced::widget::text::Style {
-            color: Some(t.foreground_muted),
-        }));
-    }
-
-    col.into()
-}
-
-pub fn primary_button(t: Tokens, label: String, on_press: Message) -> E<'static> {
-    // No purple/blue. Same family as the workspace pill, slightly stronger on hover.
-    button(text(label).size(14))
-        .padding([10, 14])
-        .style(move |_: &Theme, status| {
-            let (bg_a, bd_a) = match status {
-                iced::widget::button::Status::Hovered => (0.08, 0.12),
-                iced::widget::button::Status::Pressed => (0.10, 0.14),
-                _ => (0.06, 0.10),
+        .style(move |_| {
+            let mut s = container_style(t.card, t.foreground);
+            // Borde sutil alrededor de las cards
+            s.border = Border {
+                color: t.border,
+                width: 1.0,
+                radius: border::Radius::from(t.radius_xl),
             };
-
-            iced::widget::button::Style {
-                text_color: t.foreground,
-                background: Some(alpha(Color::WHITE, bg_a).into()),
-                border: border::Border {
-                    color: alpha(Color::WHITE, bd_a),
-                    width: 1.0,
-                    radius: 999.0.into(),
-                },
-                shadow: Shadow::default(),
-            }
+            // Sombra para dar profundidad
+            s.shadow = Shadow {
+                color: Color::from_rgba8(0x00, 0x00, 0x00, 0.38),
+                offset: Vector::new(0.0, 18.0),
+                blur_radius: 36.0,
+            };
+            s
         })
-        .on_press(on_press)
         .into()
 }
 
-pub fn ghost_button(t: Tokens, label: String, on_press: Message) -> E<'static> {
-    button(text(label).size(13))
+// Botones
+
+pub fn outline_button(t: Tokens, label: String, on_press: Message) -> Element<'static, Message> {
+    button(text(label).size(12).color(t.foreground))
         .padding([8, 12])
         .style(move |_: &Theme, status| {
+            let mut s = iced::widget::button::Style::default();
             let bg = match status {
-                iced::widget::button::Status::Hovered => alpha(Color::WHITE, 0.05),
-                iced::widget::button::Status::Pressed => alpha(Color::WHITE, 0.07),
-                _ => alpha(Color::WHITE, 0.00),
+                iced::widget::button::Status::Hovered => t.hover_bg,
+                iced::widget::button::Status::Pressed => t.active_bg,
+                _ => Color::TRANSPARENT,
             };
-
-            iced::widget::button::Style {
-                text_color: t.foreground_muted,
-                background: Some(bg.into()),
-                border: border::Border {
-                    color: alpha(Color::WHITE, 0.10),
-                    width: 1.0,
-                    radius: 999.0.into(),
-                },
-                shadow: Shadow::default(),
-            }
+            s.background = Some(Background::Color(bg));
+            s.border = Border {
+                color: t.border,
+                width: 1.0,
+                radius: border::Radius::from(999.0),
+            };
+            s.text_color = t.foreground;
+            s
         })
         .on_press(on_press)
         .into()
 }
 
-pub fn danger_button(t: Tokens, label: String, on_press: Message) -> E<'static> {
-    button(text(label).size(13))
+pub fn ghost_button(t: Tokens, label: String, on_press: Message) -> Element<'static, Message> {
+    button(text(label).size(12).color(t.muted_fg))
+        .padding([6, 10])
+        .style(move |_: &Theme, status| {
+            let mut s = iced::widget::button::Style::default();
+            let bg = match status {
+                iced::widget::button::Status::Hovered => t.hover_bg,
+                iced::widget::button::Status::Pressed => t.active_bg,
+                _ => Color::TRANSPARENT,
+            };
+            s.background = Some(Background::Color(bg));
+            s.text_color = t.muted_fg;
+            s
+        })
+        .on_press(on_press)
+        .into()
+}
+
+pub fn primary_button(t: Tokens, label: String, on_press: Message) -> Element<'static, Message> {
+    button(text(label).size(12).color(t.foreground))
         .padding([8, 12])
         .style(move |_: &Theme, status| {
+            let mut s = iced::widget::button::Style::default();
+
+            // Estados de interacción sutiles
+            let base = alpha(Color::from_rgba8(0xFF, 0xFF, 0xFF, 1.0), 0.08);
+            let hover = alpha(Color::from_rgba8(0xFF, 0xFF, 0xFF, 1.0), 0.12);
+            let press = alpha(Color::from_rgba8(0xFF, 0xFF, 0xFF, 1.0), 0.06);
+
             let bg = match status {
-                iced::widget::button::Status::Hovered => alpha(t.danger, 0.18),
-                iced::widget::button::Status::Pressed => alpha(t.danger, 0.26),
-                _ => alpha(t.danger, 0.12),
+                iced::widget::button::Status::Hovered => hover,
+                iced::widget::button::Status::Pressed => press,
+                _ => base,
             };
 
-            iced::widget::button::Style {
-                text_color: t.foreground,
-                background: Some(bg.into()),
-                border: border::Border {
-                    color: alpha(t.danger, 0.55),
-                    width: 1.0,
-                    radius: 999.0.into(),
-                },
-                shadow: Shadow::default(),
-            }
+            s.background = Some(Background::Color(bg));
+            s.border = Border {
+                color: alpha(Color::from_rgba8(0xFF, 0xFF, 0xFF, 1.0), 0.12),
+                width: 1.0,
+                radius: border::Radius::from(999.0),
+            };
+            s.text_color = t.foreground;
+            s
         })
         .on_press(on_press)
         .into()
 }
 
-pub fn small_tag(t: Tokens, label: &'static str) -> E<'static> {
-    container(text(label).size(12))
+pub fn danger_button(_t: Tokens, label: String, on_press: Message) -> Element<'static, Message> {
+    let danger = Color::from_rgba8(0xFF, 0x5A, 0x5A, 1.0);
+    button(text(label).size(12).color(danger))
         .padding([6, 10])
-        .style(move |_| container::Style {
-            text_color: Some(t.foreground_muted),
-            background: Some(alpha(Color::WHITE, 0.05).into()),
-            border: border::Border {
-                color: alpha(Color::WHITE, 0.08),
+        .style(move |_: &Theme, status| {
+            let mut s = iced::widget::button::Style::default();
+            let bg = match status {
+                iced::widget::button::Status::Hovered => alpha(danger, 0.14),
+                iced::widget::button::Status::Pressed => alpha(danger, 0.10),
+                _ => alpha(danger, 0.08),
+            };
+            s.background = Some(Background::Color(bg));
+            s.border = Border {
+                color: alpha(danger, 0.22),
                 width: 1.0,
-                radius: 999.0.into(),
-            },
-            shadow: Shadow::default(),
+                radius: border::Radius::from(999.0),
+            };
+            s.text_color = danger;
+            s
+        })
+        .on_press(on_press)
+        .into()
+}
+
+// Divisores
+
+pub fn v_divider(t: Tokens) -> Element<'static, Message> {
+    container(Space::new())
+        .width(Length::Fixed(1.0))
+        .height(Length::Fill)
+        .style(move |_| {
+            // Usamos un color explícito para el borde
+            container_style(alpha(Color::from_rgba8(0xFF, 0xFF, 0xFF, 1.0), 0.06), t.foreground)
         })
         .into()
 }
 
-pub fn chip(t: Tokens, label: String) -> E<'static> {
-    container(text(label).size(12))
-        .padding([6, 10])
-        .style(move |_| container::Style {
-            text_color: Some(t.foreground_muted),
-            background: Some(alpha(Color::WHITE, 0.04).into()),
-            border: border::Border {
-                color: alpha(Color::WHITE, 0.08),
-                width: 1.0,
-                radius: 999.0.into(),
-            },
-            shadow: Shadow::default(),
+pub fn h_divider(t: Tokens) -> Element<'static, Message> {
+    container(Space::new())
+        .width(Length::Fill)
+        .height(Length::Fixed(1.0))
+        .style(move |_| {
+            container_style(alpha(Color::from_rgba8(0xFF, 0xFF, 0xFF, 1.0), 0.06), t.foreground)
         })
         .into()
 }
 
-pub fn stat_pill(t: Tokens, value: u32, label: &str) -> E<'static> {
-    let left = container(text(value.to_string()).size(12))
-        .padding([4, 10])
-        .style(move |_| container::Style {
-            text_color: Some(t.foreground),
-            background: Some(alpha(Color::WHITE, 0.05).into()),
-            border: border::Border {
-                color: alpha(Color::WHITE, 0.08),
-                width: 1.0,
-                radius: 999.0.into(),
-            },
-            shadow: Shadow::default(),
-        });
+/* ---------------- Sidebar ---------------- */
 
-    let right = container(text(label.to_string()).size(12))
-        .padding([4, 10])
-        .style(move |_| container::Style {
-            text_color: Some(t.foreground_muted),
-            background: Some(alpha(Color::WHITE, 0.02).into()),
-            border: border::Border {
-                color: alpha(Color::WHITE, 0.06),
-                width: 1.0,
-                radius: 999.0.into(),
-            },
-            shadow: Shadow::default(),
-        });
-
-    Row::new().spacing(8).push(left).push(right).into()
-}
-
-pub fn empty_state(t: Tokens, title: &str, body: &str) -> E<'static> {
-    card(
-        t,
-        Column::new()
-            .spacing(8)
-            .push(text(title.to_string()).size(16))
-            .push(text(body.to_string()).size(13).style(move |_| iced::widget::text::Style {
-                color: Some(t.foreground_muted),
-            }))
-            .into(),
-    )
-}
-
-// ----------------------------
-// Lucide icons (SVG, offline)
-// ----------------------------
-
-#[derive(Clone, Copy)]
-enum LucideIcon {
-    Menu,
-    Dashboard,
-    Folder,
-    Globe,
-    Hammer,
-    Kanban,
-    Package,
+#[derive(Debug, Clone, Copy)]
+enum NavKey {
+    Overview,
+    Workspaces,
+    Universe,
+    Forge,
+    PmTools,
+    Assets,
     Settings,
 }
 
-const SVG_MENU: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>"#;
-
-const SVG_DASHBOARD: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="10" width="7" height="11" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>"#;
-
-const SVG_FOLDER: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4H4a2 2 0 0 0-2 2v3h20V8a2 2 0 0 0-2-2h-8z"/><path d="M2 9v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9z"/></svg>"#;
-
-const SVG_GLOBE: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20"/><path d="M12 2a15 15 0 0 0 0 20"/></svg>"#;
-
-const SVG_HAMMER: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7l3 3"/><path d="M5 21l10-10"/><path d="M7 3l4 4"/><path d="M6 4l2-2 5 5-2 2z"/><path d="M13 7l6 6-2 2-6-6z"/></svg>"#;
-
-const SVG_KANBAN: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7v9"/><path d="M12 7v5"/><path d="M17 7v7"/></svg>"#;
-
-const SVG_PACKAGE: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 9.4 7.5 4.2"/><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7.3 12 12l8.7-4.7"/><path d="M12 22V12"/></svg>"#;
-
-const SVG_SETTINGS: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a7.9 7.9 0 0 0 .1-1 7.9 7.9 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a8.2 8.2 0 0 0-1.7-1L15 3h-6l-.3 2.4a8.2 8.2 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.9 7.9 0 0 0-.1 1 7.9 7.9 0 0 0 .1 1l-2 1.6 2 3.4 2.4-1a8.2 8.2 0 0 0 1.7 1L9 21h6l.3-2.4a8.2 8.2 0 0 0 1.7-1l2.4 1 2-3.4Z"/></svg>"#;
-
-fn lucide_handle(icon: LucideIcon) -> iced::widget::svg::Handle {
-    let svg = match icon {
-        LucideIcon::Menu => SVG_MENU,
-        LucideIcon::Dashboard => SVG_DASHBOARD,
-        LucideIcon::Folder => SVG_FOLDER,
-        LucideIcon::Globe => SVG_GLOBE,
-        LucideIcon::Hammer => SVG_HAMMER,
-        LucideIcon::Kanban => SVG_KANBAN,
-        LucideIcon::Package => SVG_PACKAGE,
-        LucideIcon::Settings => SVG_SETTINGS,
-    };
-
-    iced::widget::svg::Handle::from_memory(svg.as_bytes())
+fn is_active(state: &AppState, key: NavKey) -> bool {
+    match (key, &state.route) {
+        (NavKey::Overview, Route::Overview) => true,
+        (NavKey::Workspaces, Route::Workspaces) => true,
+        (NavKey::Universe, Route::UniverseList)
+        | (NavKey::Universe, Route::UniverseDetail { .. })
+        | (NavKey::Universe, Route::Bestiary { .. })
+        | (NavKey::Universe, Route::Timeline { .. }) => true,
+        (NavKey::Forge, Route::Forge) => true,
+        (NavKey::PmTools, Route::PmTools) => true,
+        (NavKey::Assets, Route::Assets) => true,
+        (NavKey::Settings, Route::Account) => true,
+        _ => false,
+    }
 }
 
-fn lucide_icon(t: Tokens, icon: LucideIcon, size: f32) -> E<'static> {
-    let handle = lucide_handle(icon);
+fn icon_for(key: NavKey) -> &'static str {
+    match key {
+        NavKey::Overview => "⌂",
+        NavKey::Workspaces => "▦",
+        NavKey::Universe => "◉",
+        NavKey::Forge => "⚒",
+        NavKey::PmTools => "≡",
+        NavKey::Assets => "◫",
+        NavKey::Settings => "⚙",
+    }
+}
 
-    iced::widget::svg(handle)
-        .width(Length::Fixed(size))
-        .height(Length::Fixed(size))
-        .style(move |_: &Theme, _status: iced::widget::svg::Status| iced::widget::svg::Style {
-            color: Some(t.foreground),
-        })
+fn group_label<'a>(label: &'a str, t: Tokens) -> E<'a> {
+    container(text(label).size(10).color(alpha(t.muted_fg, 0.85)))
+        .width(Length::Fill)
+        .padding([10, 12])
         .into()
 }
 
-fn icon_button(t: Tokens, icon: LucideIcon, active: bool, route: Route, on_press: Message) -> E<'static> {
-    let content = container(lucide_icon(t, icon, 18.0))
-        .width(Length::Fixed(44.0))
-        .height(Length::Fixed(44.0))
-        .align_x(Alignment::Center)
+fn nav_button_style(
+    t: Tokens,
+    active: bool,
+    status: iced::widget::button::Status,
+) -> iced::widget::button::Style {
+    let mut s = iced::widget::button::Style::default();
+
+    let bg = if active {
+        alpha(Color::from_rgba8(0xFF, 0xFF, 0xFF, 1.0), 0.06)
+    } else {
+        match status {
+            iced::widget::button::Status::Hovered => t.hover_bg,
+            iced::widget::button::Status::Pressed => t.active_bg,
+            _ => Color::TRANSPARENT,
+        }
+    };
+
+    s.background = Some(Background::Color(bg));
+    s.text_color = t.foreground;
+    s.border = Border {
+        color: if active {
+            alpha(Color::from_rgba8(0xFF, 0xFF, 0xFF, 1.0), 0.08)
+        } else {
+            Color::TRANSPARENT
+        },
+        width: if active { 1.0 } else { 0.0 },
+        radius: border::Radius::from(12.0),
+    };
+
+    s
+}
+
+fn nav_item<'a>(t: Tokens, label: &'a str, key: NavKey, on_press: Message, active: bool) -> E<'a> {
+    let icon = text(icon_for(key))
+        .size(14)
+        .color(alpha(t.foreground, 0.92));
+
+    let label = text(label)
+        .size(14)
+        .color(alpha(t.foreground, 0.92))
+        .wrapping(iced::widget::text::Wrapping::None);
+
+    let inner: Row<'a, Message> = Row::new()
+        .spacing(10)
         .align_y(Alignment::Center)
-        .style(move |_| {
-            if active {
-                // EXACT same look as workspace pill.
-                pill_bg_style(t)
-            } else {
-                container::Style {
-                    text_color: Some(t.foreground),
-                    background: Some(alpha(Color::WHITE, 0.00).into()),
-                    border: border::rounded(14.0),
-                    shadow: Shadow::default(),
-                }
-            }
-        });
+        .push(container(icon).width(Length::Fixed(18.0)))
+        .push(container(label).width(Length::Fill));
 
-    button(content)
-        .padding(0)
-        .width(Length::Fixed(44.0))
-        .height(Length::Fixed(44.0))
-        .style(move |_: &Theme, status| {
-            let is_hover = matches!(status, iced::widget::button::Status::Hovered);
-            let is_pressed = matches!(status, iced::widget::button::Status::Pressed);
-
-            let bg = if active {
-                // keep active stable; slight boost on hover/press
-                if is_pressed {
-                    alpha(Color::WHITE, 0.10)
-                } else if is_hover {
-                    alpha(Color::WHITE, 0.08)
-                } else {
-                    alpha(Color::WHITE, 0.06)
-                }
-            } else if is_pressed {
-                alpha(Color::WHITE, 0.06)
-            } else if is_hover {
-                alpha(Color::WHITE, 0.05)
-            } else {
-                alpha(Color::WHITE, 0.00)
-            };
-
-            let bd = if active || is_hover || is_pressed {
-                alpha(Color::WHITE, 0.10)
-            } else {
-                alpha(Color::WHITE, 0.00)
-            };
-
-            iced::widget::button::Style {
-                text_color: t.foreground,
-                background: Some(bg.into()),
-                border: border::Border {
-                    color: bd,
-                    width: 1.0,
-                    radius: 14.0.into(),
-                },
-                shadow: Shadow::default(),
-            }
-        })
+    button(container(inner).width(Length::Fill))
+        .width(Length::Fill)
+        .height(Length::Fixed(36.0))
+        .padding([0, 12])
+        .style(move |_: &Theme, status| nav_button_style(t, active, status))
         .on_press(on_press)
         .into()
 }
 
-pub fn sidebar(state: &AppState, t: Tokens) -> E<'static> {
-    let top_menu = icon_button(
-        t,
-        LucideIcon::Menu,
-        true, // always visible as a pill button (like your preference)
-        Route::Overview,
-        Message::Navigate(Route::Overview),
-    );
+// =================================================================
+// LA CORRECCIÓN CLAVE: El sidebar devuelve el panel + el borde
+// =================================================================
+pub fn sidebar<'a>(state: &'a AppState, t: Tokens) -> E<'a> {
+    let mut modules: Column<'a, Message> = Column::new().spacing(30).width(Length::Fill);
 
-    let nav = Column::new()
-        .spacing(10)
-        .push(icon_button(
-            t,
-            LucideIcon::Dashboard,
-            matches!(state.route, Route::Overview),
-            Route::Overview,
-            Message::Navigate(Route::Overview),
-        ))
-        .push(icon_button(
-            t,
-            LucideIcon::Folder,
-            matches!(state.route, Route::Workspaces),
-            Route::Workspaces,
-            Message::Navigate(Route::Workspaces),
-        ))
-        .push(icon_button(
-            t,
-            LucideIcon::Globe,
-            matches!(
-                state.route,
-                Route::UniverseList
-                    | Route::UniverseDetail { .. }
-                    | Route::Bestiary { .. }
-                    | Route::Timeline { .. }
-            ),
-            Route::UniverseList,
-            Message::Navigate(Route::UniverseList),
-        ))
-        .push(icon_button(
-            t,
-            LucideIcon::Hammer,
-            matches!(state.route, Route::Forge),
-            Route::Forge,
-            Message::Navigate(Route::Forge),
-        ))
-        .push(icon_button(
-            t,
-            LucideIcon::Kanban,
-            matches!(state.route, Route::PmTools),
-            Route::PmTools,
-            Message::Navigate(Route::PmTools),
-        ))
-        .push(icon_button(
-            t,
-            LucideIcon::Package,
-            matches!(state.route, Route::Assets),
-            Route::Assets,
-            Message::Navigate(Route::Assets),
-        ));
+    // Lista de módulos
+    modules = modules
+        .push(group_label("Modules", t))
+        .push(nav_item(t, "Overview", NavKey::Overview, Message::Navigate(Route::Overview), is_active(state, NavKey::Overview)))
+        .push(nav_item(t, "Workspaces", NavKey::Workspaces, Message::Navigate(Route::Workspaces), is_active(state, NavKey::Workspaces)))
+        .push(nav_item(t, "Universe", NavKey::Universe, Message::Navigate(Route::UniverseList), is_active(state, NavKey::Universe)))
+        .push(nav_item(t, "The Forge", NavKey::Forge, Message::Navigate(Route::Forge), is_active(state, NavKey::Forge)))
+        .push(nav_item(t, "PM Tools", NavKey::PmTools, Message::Navigate(Route::PmTools), is_active(state, NavKey::PmTools)))
+        .push(nav_item(t, "Assets", NavKey::Assets, Message::Navigate(Route::Assets), is_active(state, NavKey::Assets)));
 
-    let bottom = Column::new()
-        .spacing(10)
-        .push(Space::with_height(Length::Fill))
-        // Account becomes gear/settings
-        .push(icon_button(
-            t,
-            LucideIcon::Settings,
-            matches!(state.route, Route::Account),
-            Route::Account,
-            Message::Navigate(Route::Account),
-        ));
+    let mut account: Column<'a, Message> = Column::new().spacing(10).width(Length::Fill);
+    account = account
+        .push(group_label("Account", t))
+        .push(nav_item(t, "Settings", NavKey::Settings, Message::Navigate(Route::Account), is_active(state, NavKey::Settings)));
 
-    let layout = Column::new()
-        .spacing(10)
-        .push(top_menu)
-        .push(Space::with_height(Length::Fixed(10.0)))
-        .push(nav)
-        .push(bottom)
+    let inner_content: Column<'a, Message> = Column::new()
         .width(Length::Fill)
         .height(Length::Fill)
-        .align_x(Alignment::Center);
+        .push(modules)
+        .push(container(Space::new()).height(Length::Fill)) // Spacer
+        .push(account)
+        .padding(Padding { top: 10.0, right: 10.0, bottom: 12.0, left: 10.0 })
+        .spacing(10);
 
-    container(layout)
-        .padding([16, 12])
+    // 1. Contenedor del Sidebar (Fondo oscuro, SIN BORDE propio)
+    let panel = container(inner_content)
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(move |_| container_style(t.sidebar_bg, t.foreground))
+        .style(move |_| {
+            let mut s = container_style(t.sidebar_bg, t.foreground);
+            // IMPORTANTE: width 0.0 para no pintar bordes en los 4 lados
+            s.border = Border {
+                color: Color::TRANSPARENT,
+                width: 0.0,
+                radius: border::Radius::from(0.0),
+            };
+            s
+        });
+
+    // 2. Devolvemos una FILA que contiene: [ PANEL + DIVISOR ]
+    // Esto simula un "Right Border" perfecto.
+    Row::new()
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .spacing(0) // CERO espacio para que estén pegados
+        .push(panel)
+        .push(v_divider(t)) // La línea de 1px
         .into()
 }
 
-pub fn header(state: &AppState, t: Tokens) -> E<'static> {
+/* ---------------- Header ---------------- */
+
+fn workspace_pill(t: Tokens, label: String) -> Element<'static, Message> {
+    container(text(label).size(12).color(t.foreground))
+        .padding([6, 12])
+        .style(move |_| {
+            let mut s = container_style(alpha(Color::from_rgba8(0xFF, 0xFF, 0xFF, 1.0), 0.06), t.foreground);
+            s.border = Border {
+                color: alpha(Color::from_rgba8(0xFF, 0xFF, 0xFF, 1.0), 0.10),
+                width: 1.0,
+                radius: border::Radius::from(999.0),
+            };
+            s
+        })
+        .into()
+}
+
+pub fn header<'a>(state: &'a AppState, t: Tokens) -> E<'a> {
     let brand = Column::new()
-        .spacing(4)
-        .push(text("Titan Architect Studio").size(16))
-        .push(
-            text("Where Reality Begins.")
-                .size(12)
-                .style(move |_| iced::widget::text::Style {
-                    color: Some(t.foreground_muted),
-                }),
-        );
+        .spacing(2)
+        .push(text(APP_NAME).size(16).color(alpha(t.foreground, 0.92)))
+        .push(text(APP_SLOGAN).size(12).color(alpha(t.muted_fg, 0.92)));
 
-    let workspace = pill(
-        t,
-        text(state.active_workspace.clone())
-            .size(13)
-            .into(),
-    );
-
-    let row = Row::new()
+    let right = Row::new()
+        .spacing(10)
         .align_y(Alignment::Center)
-        .spacing(14)
-        .push(brand)
-        .push(Space::with_width(Length::Fill))
-        .push(workspace);
+        .push(workspace_pill(t, state.active_workspace.clone()));
 
-    container(row)
-        .padding([14, 16])
+    let bar = Row::new()
+        .align_y(Alignment::Center)
+        .push(container(brand).width(Length::Fill))
+        .push(right)
+        .padding(Padding {
+            top: 14.0,
+            right: 24.0,
+            bottom: 14.0,
+            left: 24.0,
+        });
+
+    container(bar)
         .width(Length::Fill)
-        .style(move |_| container_style(alpha(Color::WHITE, 0.02), t.foreground))
+        .style(move |_| container_style(Color::TRANSPARENT, t.foreground))
         .into()
 }
