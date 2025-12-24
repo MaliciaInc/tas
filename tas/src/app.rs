@@ -35,6 +35,80 @@ pub enum PmState {
 }
 impl Default for PmState { fn default() -> Self { Self::Idle } }
 
+// --- DEBUG OVERLAY (A) ---
+fn debug_overlay(state: &AppState, t: ui::Tokens) -> Element<'_, Message> {
+    let inflight = match &state.db_inflight {
+        None => "None".to_string(),
+        Some(a) => format!("{:?}", a),
+    };
+
+    let schema = match state.debug_schema_version {
+        None => "…".to_string(),
+        Some(v) => v.to_string(),
+    };
+
+    let route = format!("{:?}", state.route);
+
+    let counts = format!(
+        "Universes={} Creatures={} Locations={} Eras={} Events={} Snapshots={} Issues={}",
+        state.universes.len(),
+        state.creatures.len(),
+        state.locations.len(),
+        state.timeline_eras.len(),
+        state.timeline_events.len(),
+        state.snapshots.len(),
+        state.integrity_issues.len(),
+    );
+
+    let pending_reset = match &state.pending_demo_reset {
+        None => "None".to_string(),
+        Some((uid, scope)) => format!("{} / {:?}", uid, scope),
+    };
+
+    let mut issues_col = Column::new().spacing(4);
+    if state.integrity_issues.is_empty() {
+        issues_col = issues_col.push(text("No integrity issues detected.").size(12).style(move |_| iced::widget::text::Style { color: Some(t.muted_fg) }));
+    } else {
+        for (i, issue) in state.integrity_issues.iter().take(8).enumerate() {
+            issues_col = issues_col.push(text(format!("{}. {}", i + 1, issue)).size(12).style(move |_| iced::widget::text::Style { color: Some(t.foreground) }));
+        }
+        if state.integrity_issues.len() > 8 {
+            issues_col = issues_col.push(text(format!("…and {} more", state.integrity_issues.len() - 8)).size(12).style(move |_| iced::widget::text::Style { color: Some(t.muted_fg) }));
+        }
+    }
+
+    let content = Column::new()
+        .spacing(10)
+        .push(Row::new().spacing(12)
+            .push(text("Debug Overlay").size(16).style(move |_| iced::widget::text::Style { color: Some(t.foreground) }))
+            .push(text("(Toggle from Universe Detail)").size(12).style(move |_| iced::widget::text::Style { color: Some(t.muted_fg) }))
+        )
+        .push(text(format!("schema_version={}", schema)).size(12).style(move |_| iced::widget::text::Style { color: Some(t.muted_fg) }))
+        .push(text(format!("db_inflight={}", inflight)).size(12).style(move |_| iced::widget::text::Style { color: Some(t.muted_fg) }))
+        .push(text(format!("pending_reset={}", pending_reset)).size(12).style(move |_| iced::widget::text::Style { color: Some(t.muted_fg) }))
+        .push(text(format!("route={}", route)).size(12).style(move |_| iced::widget::text::Style { color: Some(t.muted_fg) }))
+        .push(text(counts).size(12).style(move |_| iced::widget::text::Style { color: Some(t.muted_fg) }))
+        .push(ui::h_divider(t))
+        .push(text("Integrity issues (top 8):").size(12).style(move |_| iced::widget::text::Style { color: Some(t.muted_fg) }))
+        .push(issues_col);
+
+    let panel = container(content)
+        .padding(14)
+        .width(Length::Fixed(820.0))
+        .style(move |_: &Theme| {
+            let mut s = ui::container_style(ui::alpha(t.shell_b, 0.98), t.foreground);
+            s.border.color = t.accent;
+            s.border.width = 2.0;
+            s.border.radius = 12.0.into();
+            s.shadow = iced::Shadow { color: Color::BLACK, offset: Vector::new(0.0, 12.0), blur_radius: 24.0 };
+            s
+        });
+
+    container(panel)
+        .padding(iced::Padding { top: 20.0, left: 260.0, right: 20.0, bottom: 20.0 })
+        .into()
+}
+
 // --- VIEW DISPATCHER ---
 pub fn view(state: &AppState) -> Element<'_, Message> {
     let t = ui::Tokens::nub_dark();
@@ -114,7 +188,12 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         }
     }
 
-    // BULLDOZER: TOASTS LAYER (Siempre encima)
+    // A) DEBUG OVERLAY (always above modals)
+    if state.debug_overlay_open {
+        stack = stack.push(debug_overlay(state, t));
+    }
+
+    // TOASTS
     if !state.toasts.is_empty() {
         stack = stack.push(ui::toasts_overlay(t, &state.toasts));
     }

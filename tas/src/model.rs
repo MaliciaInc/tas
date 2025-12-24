@@ -13,7 +13,7 @@ pub struct Project {
 }
 
 // --- UNIVERSE & BESTIARY ---
-#[derive(Debug, Clone, FromRow, PartialEq)]
+#[derive(Debug, Clone, FromRow, PartialEq, Serialize, Deserialize)]
 pub struct Universe {
     pub id: String,
     pub name: String,
@@ -21,7 +21,7 @@ pub struct Universe {
     pub archived: bool,
 }
 
-#[derive(Debug, Clone, FromRow, PartialEq)] // <--- FIX: Agregado PartialEq
+#[derive(Debug, Clone, FromRow, PartialEq, Serialize, Deserialize)]
 pub struct Creature {
     pub id: String,
     pub name: String,
@@ -35,7 +35,7 @@ pub struct Creature {
 }
 
 // --- LOCATIONS ---
-#[derive(Debug, Clone, FromRow, PartialEq)] // <--- FIX: Agregado PartialEq
+#[derive(Debug, Clone, FromRow, PartialEq, Serialize, Deserialize)]
 pub struct Location {
     pub id: String,
     pub universe_id: String,
@@ -52,7 +52,7 @@ impl fmt::Display for Location {
 }
 
 // --- TIMELINE ---
-#[derive(Debug, Clone, FromRow, PartialEq)] // <--- FIX: Agregado PartialEq
+#[derive(Debug, Clone, FromRow, PartialEq, Serialize, Deserialize)]
 pub struct TimelineEra {
     pub id: String,
     pub universe_id: String,
@@ -63,7 +63,7 @@ pub struct TimelineEra {
     pub color: String,
 }
 
-#[derive(Debug, Clone, FromRow, PartialEq)] // <--- FIX: Agregado PartialEq
+#[derive(Debug, Clone, FromRow, PartialEq, Serialize, Deserialize)]
 pub struct TimelineEvent {
     pub id: String,
     pub universe_id: String,
@@ -78,34 +78,56 @@ pub struct TimelineEvent {
 }
 
 // --- PM TOOLS (KANBAN) ---
-
-#[derive(Debug, Clone, FromRow, PartialEq)]
+#[derive(Debug, Clone, FromRow, PartialEq, Serialize, Deserialize)]
 pub struct Board {
     pub id: String,
     pub name: String,
-    #[allow(dead_code)] pub kind: String,
+    #[allow(dead_code)]
+    pub kind: String,
 }
 
-#[derive(Debug, Clone, FromRow, PartialEq)]
+#[derive(Debug, Clone, FromRow, PartialEq, Serialize, Deserialize)]
 pub struct BoardColumn {
     pub id: String,
-    #[allow(dead_code)] pub board_id: String,
+    #[allow(dead_code)]
+    pub board_id: String,
     pub name: String,
     pub position: i32,
 }
 
-#[derive(Debug, Clone, FromRow, PartialEq)] // <--- FIX: Agregado PartialEq
+#[derive(Debug, Clone, FromRow, PartialEq, Serialize, Deserialize)]
 pub struct Card {
     pub id: String,
     pub column_id: String,
     pub title: String,
     pub description: String,
     pub position: f64,
-    #[sqlx(default)] pub priority: String,
+    #[sqlx(default)]
+    pub priority: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct KanbanBoardData {
     pub board: Board,
     pub columns: Vec<(BoardColumn, Vec<Card>)>,
+}
+
+// --- SNAPSHOTS ---
+#[derive(Debug, Clone, FromRow, PartialEq)]
+pub struct UniverseSnapshot {
+    pub id: String,
+    pub universe_id: String,
+    pub name: String,
+    pub created_at: String,
+}
+
+// Payload stored as JSON in DB
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UniverseSnapshotPayload {
+    pub universe: Universe,
+    pub creatures: Vec<Creature>,
+    pub locations: Vec<Location>,
+    pub timeline_eras: Vec<TimelineEra>,
+    pub timeline_events: Vec<TimelineEvent>,
+    pub pm_cards: Vec<Card>, // system board cards (board-main)
 }

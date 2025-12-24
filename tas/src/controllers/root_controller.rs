@@ -1,4 +1,5 @@
 use iced::Task;
+
 use crate::app::{AppState, Message, PmState, WorkspaceMessage};
 use crate::db::Database;
 use crate::state::{DbAction, ToastKind};
@@ -37,13 +38,13 @@ pub fn update(state: &mut AppState, message: Message) {
         }
 
         Message::Workspace(msg) => match msg {
-            WorkspaceMessage::CreateStart => { state.is_creating_project = true; state.new_project_name.clear(); },
+            WorkspaceMessage::CreateStart => { state.is_creating_project = true; state.new_project_name.clear(); }
             WorkspaceMessage::CreateCancel => state.is_creating_project = false,
             WorkspaceMessage::NameChanged(v) => state.new_project_name = v,
-            WorkspaceMessage::CreateConfirm | WorkspaceMessage::Open(_) | WorkspaceMessage::CloseProject | WorkspaceMessage::RefreshList | WorkspaceMessage::Delete(_) => {},
+            _ => {}
         },
 
-        Message::ProjectsLoaded(projs) => { state.projects = projs; },
+        Message::ProjectsLoaded(projs) => state.projects = projs,
 
         Message::Pm(msg) => pm_controller::update(state, msg),
         Message::Bestiary(msg) => bestiary_controller::update(state, msg),
@@ -86,11 +87,7 @@ pub fn update(state: &mut AppState, message: Message) {
                                 }
 
                                 if !found_neighbor {
-                                    new_pos = if let Some(last) = cards.last() {
-                                        last.position + 1000.0
-                                    } else {
-                                        1000.0
-                                    };
+                                    new_pos = if let Some(last) = cards.last() { last.position + 1000.0 } else { 1000.0 };
                                 }
 
                                 state.queue(DbAction::MoveCard(card.id.clone(), target_col.clone(), new_pos));
@@ -105,36 +102,52 @@ pub fn update(state: &mut AppState, message: Message) {
             state.hovered_card = None;
         }
 
-        Message::UniversesFetched(Ok(u)) => state.universes = u,
-        Message::BoardsFetched(Ok(b)) => state.boards_list = b,
+        // Results
+        Message::UniversesFetched(Ok(v)) => state.universes = v,
+        Message::BoardsFetched(Ok(v)) => state.boards_list = v,
+        Message::PmBoardFetched(Ok(v)) => state.pm_data = Some(v),
 
-        Message::LocationsFetched(Ok(l)) => {
-            state.locations = l;
+        Message::CreaturesFetched(Ok(v)) => {
+            state.creatures = v;
+            if let crate::app::Route::Bestiary { universe_id } = &state.route {
+                state.loaded_creatures_universe = Some(universe_id.clone());
+            }
+        }
+
+        Message::LocationsFetched(Ok(v)) => {
+            state.locations = v;
             if let crate::app::Route::Locations { universe_id } = &state.route {
                 state.loaded_locations_universe = Some(universe_id.clone());
             }
         }
 
-        Message::PmBoardFetched(Ok(data)) => state.pm_data = Some(data),
-
-        Message::TimelineFetched(Ok((e, eras))) => {
-            state.timeline_events = e;
+        Message::TimelineFetched(Ok((events, eras))) => {
+            state.timeline_events = events;
             state.timeline_eras = eras;
             if let crate::app::Route::Timeline { universe_id } = &state.route {
                 state.loaded_timeline_universe = Some(universe_id.clone());
             }
         }
 
-        Message::CreaturesFetched(Ok(c)) => {
-            state.creatures = c;
-            if let crate::app::Route::Bestiary { universe_id } = &state.route {
-                state.loaded_creatures_universe = Some(universe_id.clone());
-            }
+        Message::SnapshotsFetched(Ok(v)) => state.snapshots = v,
+        Message::SchemaVersionFetched(Ok(v)) => state.debug_schema_version = Some(v),
+        Message::IntegrityFetched(Ok(v)) => {
+            state.integrity_issues = v;
+            state.integrity_busy = false;
         }
 
-        Message::UniversesFetched(Err(e)) | Message::BoardsFetched(Err(e)) | Message::LocationsFetched(Err(e))
-        | Message::PmBoardFetched(Err(e)) | Message::TimelineFetched(Err(e)) | Message::CreaturesFetched(Err(e)) => {
+        // Errors
+        Message::UniversesFetched(Err(e))
+        | Message::BoardsFetched(Err(e))
+        | Message::PmBoardFetched(Err(e))
+        | Message::CreaturesFetched(Err(e))
+        | Message::LocationsFetched(Err(e))
+        | Message::TimelineFetched(Err(e))
+        | Message::SnapshotsFetched(Err(e))
+        | Message::SchemaVersionFetched(Err(e))
+        | Message::IntegrityFetched(Err(e)) => {
             state.show_toast(format!("Error loading data: {}", e), ToastKind::Error);
+            state.integrity_busy = false;
         }
 
         Message::Tick(_) => {
@@ -142,9 +155,7 @@ pub fn update(state: &mut AppState, message: Message) {
             state.toasts.retain(|t| now.duration_since(t.created_at).as_secs() < t.ttl_secs);
         }
 
-        Message::ToastDismiss(id) => {
-            state.toasts.retain(|t| t.id != id);
-        }
+        Message::ToastDismiss(id) => state.toasts.retain(|t| t.id != id),
 
         _ => {}
     }
@@ -152,82 +163,90 @@ pub fn update(state: &mut AppState, message: Message) {
 
 pub fn post_event_tasks(state: &mut AppState, db: &Option<Database>) -> Vec<Task<MainMessage>> {
     let mut tasks = Vec::new();
+    let Some(db_base) = db else { return tasks };
 
+    // Keep projects fresh in launcher-ish contexts
     if state.projects.is_empty() {
         tasks.push(Task::perform(async { ProjectManager::load_projects() }, MainMessage::ProjectsLoaded));
     }
 
-    let Some(db_base) = db else { return tasks };
-
-    // 1) PROCESS QUEUE
+    // 1) Process DB queue (ONE at a time)
     if state.db_inflight.is_none() {
         if let Some(action) = state.db_queue.pop_front() {
             state.db_inflight = Some(action.clone());
             let db = db_base.clone();
 
-            tasks.push(Task::perform(async move {
-                match action {
-                    DbAction::CreateUniverse(n, d) => db.create_universe(n, d).await,
-                    DbAction::DeleteUniverse(id) => db.delete_universe(id).await,
-                    DbAction::InjectDemoData(id) => db.inject_demo_data(id).await,
+            tasks.push(Task::perform(
+                async move {
+                    match action {
+                        DbAction::CreateUniverse(n, d) => db.create_universe(n, d).await.map_err(|e| e.to_string()),
+                        DbAction::DeleteUniverse(id) => db.delete_universe(id).await.map_err(|e| e.to_string()),
+                        DbAction::InjectDemoData(id) => db.inject_demo_data(id).await.map_err(|e| e.to_string()),
+                        DbAction::ResetDemoDataScoped(id, scope) => db.reset_demo_data_scoped(id, scope).await.map_err(|e| e.to_string()),
 
-                    DbAction::ResetDemoDataScoped(id, scope) => db.reset_demo_data_scoped(id, scope).await,
+                        DbAction::SnapshotCreate { universe_id, name } => db.snapshot_create(universe_id, name).await.map_err(|e| e.to_string()),
+                        DbAction::SnapshotDelete { snapshot_id } => db.snapshot_delete(snapshot_id).await.map_err(|e| e.to_string()),
+                        DbAction::SnapshotRestore { snapshot_id } => db.snapshot_restore(snapshot_id).await.map_err(|e| e.to_string()),
 
-                    DbAction::CreateBoard(n) => db.create_board(n).await,
-                    DbAction::DeleteBoard(id) => db.delete_board(id).await,
+                        DbAction::CreateBoard(n) => db.create_board(n).await.map_err(|e| e.to_string()),
+                        DbAction::DeleteBoard(id) => db.delete_board(id).await.map_err(|e| e.to_string()),
 
-                    DbAction::SaveCreature(c, uid) => db.upsert_creature(c, uid).await,
-                    DbAction::ArchiveCreature(id, st) => db.set_creature_archived(id, st).await,
-                    DbAction::DeleteCreature(id) => db.delete_creature(id).await,
+                        DbAction::SaveCreature(c, uid) => db.upsert_creature(c, uid).await.map_err(|e| e.to_string()),
+                        DbAction::ArchiveCreature(id, st) => db.set_creature_archived(id, st).await.map_err(|e| e.to_string()),
+                        DbAction::DeleteCreature(id) => db.delete_creature(id).await.map_err(|e| e.to_string()),
 
-                    DbAction::SaveLocation(l) => db.upsert_location(l).await,
-                    DbAction::DeleteLocation(id) => db.delete_location(id).await,
+                        DbAction::SaveLocation(l) => db.upsert_location(l).await.map_err(|e| e.to_string()),
+                        DbAction::DeleteLocation(id) => db.delete_location(id).await.map_err(|e| e.to_string()),
 
-                    DbAction::SaveEvent(e) => db.upsert_timeline_event(e).await,
-                    DbAction::DeleteEvent(id) => db.delete_timeline_event(id).await,
-                    DbAction::SaveEra(e) => db.upsert_timeline_era(e).await,
-                    DbAction::DeleteEra(id) => db.delete_timeline_era(id).await,
+                        DbAction::SaveEvent(e) => db.upsert_timeline_event(e).await.map_err(|e| e.to_string()),
+                        DbAction::DeleteEvent(id) => db.delete_timeline_event(id).await.map_err(|e| e.to_string()),
+                        DbAction::SaveEra(e) => db.upsert_timeline_era(e).await.map_err(|e| e.to_string()),
+                        DbAction::DeleteEra(id) => db.delete_timeline_era(id).await.map_err(|e| e.to_string()),
 
-                    DbAction::SaveCard(c) => db.upsert_card(c).await,
-                    DbAction::MoveCard(cid, col, pos) => db.move_card(cid, col, pos).await,
-                    DbAction::DeleteCard(id) => db.delete_card(id).await,
-                }
-                    .map_err(|e| e.to_string())
-            }, MainMessage::ActionDone));
+                        DbAction::SaveCard(c) => db.upsert_card(c).await.map_err(|e| e.to_string()),
+                        DbAction::MoveCard(cid, col, pos) => db.move_card(cid, col, pos).await.map_err(|e| e.to_string()),
+                        DbAction::DeleteCard(id) => db.delete_card(id).await.map_err(|e| e.to_string()),
+                    }
+                },
+                MainMessage::ActionDone,
+            ));
         }
     }
 
-    // 2) DATA FETCHING (LAZY)
+    // 2) Lazy fetch for current route (this is what prevents "UI disconnected from DB")
     if state.db_inflight.is_none() {
-        let dirty = state.data_dirty;
-
         match &state.route {
-            crate::app::Route::PmList => {
-                let db = db_base.clone();
-                tasks.push(Task::perform(async move { db.get_all_boards().await.map_err(|e| e.to_string()) }, MainMessage::BoardsFetched));
-            }
             crate::app::Route::UniverseList => {
                 let db = db_base.clone();
                 tasks.push(Task::perform(async move { db.get_all_universes().await.map_err(|e| e.to_string()) }, MainMessage::UniversesFetched));
             }
+
+            crate::app::Route::PmList => {
+                let db = db_base.clone();
+                tasks.push(Task::perform(async move { db.get_all_boards().await.map_err(|e| e.to_string()) }, MainMessage::BoardsFetched));
+            }
+
             crate::app::Route::PmBoard { board_id } => {
-                let need_fetch = dirty || match &state.pm_data { None => true, Some(data) => data.board.id != *board_id };
+                let need_fetch = state.pm_data.as_ref().map(|d| d.board.id != *board_id).unwrap_or(true);
                 if need_fetch {
                     let db = db_base.clone();
                     let bid = board_id.clone();
                     tasks.push(Task::perform(async move { db.get_kanban_data(bid).await.map_err(|e| e.to_string()) }, MainMessage::PmBoardFetched));
                 }
             }
+
             crate::app::Route::Bestiary { universe_id } => {
                 if state.loaded_creatures_universe.as_ref() != Some(universe_id) {
                     let db = db_base.clone();
                     let uid = universe_id.clone();
                     tasks.push(Task::perform(async move { db.get_creatures(uid).await.map_err(|e| e.to_string()) }, MainMessage::CreaturesFetched));
                 }
-                let db_loc = db_base.clone();
-                let uid_loc = universe_id.clone();
-                tasks.push(Task::perform(async move { db_loc.get_locations_flat(uid_loc).await.map_err(|e| e.to_string()) }, MainMessage::LocationsFetched));
+                // locations are needed for dropdowns
+                let db = db_base.clone();
+                let uid = universe_id.clone();
+                tasks.push(Task::perform(async move { db.get_locations_flat(uid).await.map_err(|e| e.to_string()) }, MainMessage::LocationsFetched));
             }
+
             crate::app::Route::Locations { universe_id } => {
                 if state.loaded_locations_universe.as_ref() != Some(universe_id) {
                     let db = db_base.clone();
@@ -235,6 +254,7 @@ pub fn post_event_tasks(state: &mut AppState, db: &Option<Database>) -> Vec<Task
                     tasks.push(Task::perform(async move { db.get_locations_flat(uid).await.map_err(|e| e.to_string()) }, MainMessage::LocationsFetched));
                 }
             }
+
             crate::app::Route::Timeline { universe_id } => {
                 if state.loaded_timeline_universe.as_ref() != Some(universe_id) {
                     let db = db_base.clone();
@@ -245,18 +265,36 @@ pub fn post_event_tasks(state: &mut AppState, db: &Option<Database>) -> Vec<Task
                         Ok((events, eras))
                     }, MainMessage::TimelineFetched));
                 }
-                let db_loc = db_base.clone();
-                let uid_loc = universe_id.clone();
-                tasks.push(Task::perform(async move { db_loc.get_locations_flat(uid_loc).await.map_err(|e| e.to_string()) }, MainMessage::LocationsFetched));
+                // locations are needed for event editor dropdowns
+                let db = db_base.clone();
+                let uid = universe_id.clone();
+                tasks.push(Task::perform(async move { db.get_locations_flat(uid).await.map_err(|e| e.to_string()) }, MainMessage::LocationsFetched));
             }
-            crate::app::Route::Workspaces => {
-                tasks.push(Task::perform(async { ProjectManager::load_projects() }, MainMessage::ProjectsLoaded));
-            }
-            _ => {}
-        }
 
-        if state.data_dirty {
-            state.data_dirty = false;
+            crate::app::Route::UniverseDetail { universe_id } => {
+                // schema version when overlay open
+                if state.debug_overlay_open && state.debug_schema_version.is_none() {
+                    let db = db_base.clone();
+                    tasks.push(Task::perform(async move { db.get_schema_version().await.map_err(|e| e.to_string()) }, MainMessage::SchemaVersionFetched));
+                }
+
+                // snapshots list (Arhelis-only UI anyway, but safe to fetch for any)
+                if state.loaded_snapshots_universe.as_ref() != Some(universe_id) {
+                    let db = db_base.clone();
+                    let uid = universe_id.clone();
+                    tasks.push(Task::perform(async move { db.snapshot_list(uid).await.map_err(|e| e.to_string()) }, MainMessage::SnapshotsFetched));
+                    state.loaded_snapshots_universe = Some(universe_id.clone());
+                }
+
+                // integrity validation (triggered by state.integrity_busy)
+                if state.integrity_busy {
+                    let db = db_base.clone();
+                    let uid = universe_id.clone();
+                    tasks.push(Task::perform(async move { db.validate_universe(uid).await.map_err(|e| e.to_string()) }, MainMessage::IntegrityFetched));
+                }
+            }
+
+            _ => {}
         }
     }
 

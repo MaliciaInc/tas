@@ -1,6 +1,6 @@
 use iced::widget::text_editor;
 use crate::app::Route;
-use crate::model::{Creature, Universe, Card, KanbanBoardData, Board, Location, TimelineEvent, TimelineEra, Project};
+use crate::model::{Creature, Universe, Card, KanbanBoardData, Board, Location, TimelineEvent, TimelineEra, Project, UniverseSnapshot};
 use crate::state::DemoResetScope;
 
 #[derive(Debug, Clone)]
@@ -24,10 +24,21 @@ pub enum UniverseMessage {
     NameChanged(String), DescChanged(String), Create, Delete(String), Open(String),
     InjectDemoData(String),
 
-    // Reset demo data (Arhelis-only) - 2-step UI confirm
     ResetDemoPrompt(String, DemoResetScope),
     ResetDemoConfirm,
     ResetDemoCancel,
+
+    ToggleDeveloperPanel,
+
+    ToggleDebugOverlay,
+
+    SnapshotNameChanged(String),
+    SnapshotCreate(String),
+    SnapshotRefresh(String),
+    SnapshotRestore(String),
+    SnapshotDelete(String),
+
+    ValidateUniverse(String),
 }
 
 #[derive(Debug, Clone)]
@@ -73,10 +84,16 @@ pub enum Message {
     LocationsFetched(Result<Vec<Location>, String>),
     TimelineFetched(Result<(Vec<TimelineEvent>, Vec<TimelineEra>), String>),
 
+    SnapshotsFetched(Result<Vec<UniverseSnapshot>, String>),
+    SchemaVersionFetched(Result<i64, String>),
+    IntegrityFetched(Result<Vec<String>, String>),
+
     ProjectsLoaded(Vec<Project>),
     ProjectCreated(Result<Project, String>),
     DbLoaded(Result<crate::db::Database, String>),
+
     ActionDone(Result<(), String>),
+
     GlobalEvent(iced::Event),
 
     BackToUniverses, BackToUniverse(String), OpenTimeline(String), GoToLocation(String, String),

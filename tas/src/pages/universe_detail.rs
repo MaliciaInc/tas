@@ -1,5 +1,5 @@
 use iced::{Alignment, Length};
-use iced::widget::{container, text, Column, Row};
+use iced::widget::{container, text, Column, Row, text_input};
 
 use crate::app::{AppState, Message, Route, BestiaryMessage, LocationsMessage, UniverseMessage};
 use crate::{ui, pages::E};
@@ -32,27 +32,13 @@ pub fn universe_detail<'a>(state: &'a AppState, t: ui::Tokens, universe_id: &'a 
     let header_right = Row::new()
         .spacing(10)
         .push(ui::outline_button(t, "Back to universes".to_string(), Message::BackToUniverses))
-        .push(ui::outline_button(t, "Go to PM Tools".to_string(), Message::Navigate(Route::PmList)));
+        .push(ui::outline_button(t, "Go to PM Tools".to_string(), Message::Navigate(Route::PmList)))
+        .push(ui::outline_button(t, "Toggle Debug Overlay".to_string(), Message::Universe(UniverseMessage::ToggleDebugOverlay)));
 
     let header = Row::new()
         .align_y(Alignment::Center)
         .push(container(header_left).width(Length::Fill))
         .push(header_right);
-
-    let summary = Column::new()
-        .spacing(8)
-        .push(text("About this universe").size(12).color(t.muted_fg))
-        .push(
-            ui::card(
-                t,
-                Column::new()
-                    .spacing(6)
-                    .push(text("• Contains custom laws of physics and magic systems.").size(12).color(t.muted_fg))
-                    .push(text("• Home to specific species in bestiary, artifacts, etc.").size(12).color(t.muted_fg))
-                    .push(text("• Quick links to PM boards, documents and assets related to this universe.").size(12).color(t.muted_fg))
-                    .into(),
-            )
-        );
 
     let tools = Column::new()
         .spacing(8)
@@ -79,114 +65,200 @@ pub fn universe_detail<'a>(state: &'a AppState, t: ui::Tokens, universe_id: &'a 
         .spacing(20)
         .push(header)
         .push(ui::h_divider(t))
-        .push(tools)
-        .push(summary);
+        .push(tools);
 
     // Developer Options: ONLY show for Arhelis
     if is_arhelis {
-        let inject_row = Row::new()
+        let dev_header = Row::new()
             .spacing(10)
-            .push(if busy {
-                // Locked state: show non-clickable label instead of a button
-                ui::card(
-                    t,
-                    text("Inject Demo Data (busy)").size(12).color(t.muted_fg).into(),
-                )
-            } else {
-                ui::primary_button(
-                    t,
-                    "Inject Demo Data".to_string(),
-                    Message::Universe(UniverseMessage::InjectDemoData(universe_id.to_string())),
-                )
-            });
+            .align_y(Alignment::Center)
+            .push(text("Developer Options (Arhelis only)").size(12).color(t.muted_fg))
+            .push(ui::outline_button(
+                t,
+                if state.dev_panel_open { "Collapse".to_string() } else { "Expand".to_string() },
+                Message::Universe(UniverseMessage::ToggleDeveloperPanel),
+            ));
 
-        let reset_row = if busy {
-            // Locked state: show a clear message + non-interactive labels
-            Column::new()
-                .spacing(6)
-                .push(text("Dev Tools are locked while a DB action is running.").size(12).color(t.muted_fg))
-                .push(
-                    Row::new()
-                        .spacing(10)
-                        .push(ui::card(t, text("Reset ALL (busy)").size(12).color(t.muted_fg).into()))
-                        .push(ui::card(t, text("Reset Timeline (busy)").size(12).color(t.muted_fg).into()))
-                        .push(ui::card(t, text("Reset Locations (busy)").size(12).color(t.muted_fg).into()))
-                        .push(ui::card(t, text("Reset Bestiary (busy)").size(12).color(t.muted_fg).into()))
-                        .push(ui::card(t, text("Reset PM Tools (busy)").size(12).color(t.muted_fg).into()))
-                )
-        } else {
-            Column::new()
-                .spacing(6)
-                .push(
-                    Row::new()
-                        .spacing(10)
-                        .push(ui::danger_button(
-                            t,
-                            "Reset ALL".to_string(),
-                            Message::Universe(UniverseMessage::ResetDemoPrompt(universe_id.to_string(), DemoResetScope::All)),
-                        ))
-                        .push(ui::outline_button(
-                            t,
-                            "Reset Timeline".to_string(),
-                            Message::Universe(UniverseMessage::ResetDemoPrompt(universe_id.to_string(), DemoResetScope::Timeline)),
-                        ))
-                        .push(ui::outline_button(
-                            t,
-                            "Reset Locations".to_string(),
-                            Message::Universe(UniverseMessage::ResetDemoPrompt(universe_id.to_string(), DemoResetScope::Locations)),
-                        ))
-                        .push(ui::outline_button(
-                            t,
-                            "Reset Bestiary".to_string(),
-                            Message::Universe(UniverseMessage::ResetDemoPrompt(universe_id.to_string(), DemoResetScope::Bestiary)),
-                        ))
-                        .push(ui::outline_button(
-                            t,
-                            "Reset PM Tools".to_string(),
-                            Message::Universe(UniverseMessage::ResetDemoPrompt(universe_id.to_string(), DemoResetScope::PmTools)),
-                        ))
-                )
-        };
+        body = body.push(ui::h_divider(t)).push(dev_header);
 
-        let confirm_row = if busy {
-            Row::new()
-                .spacing(10)
-                .push(text("Confirmation disabled (busy).").size(12).color(t.muted_fg))
-        } else if is_pending_reset {
-            let label = format!(
-                "Confirm Reset {}",
-                scope_label(pending_scope.unwrap())
+        if state.dev_panel_open {
+            // Status + QA (moved inside dev panel)
+            let qa = ui::card(
+                t,
+                Column::new()
+                    .spacing(6)
+                    .push(text("Status + QA").size(12).color(t.muted_fg))
+                    .push(text(format!("Snapshots: {}", state.snapshots.len())).size(12).color(t.muted_fg))
+                    .push(text(format!("Integrity issues: {}", state.integrity_issues.len())).size(12).color(t.muted_fg))
+                    .into(),
             );
-            Row::new()
+
+            // Snapshots UI
+            let snap_input = text_input("Snapshot name", &state.snapshot_name)
+                .on_input(|v| Message::Universe(UniverseMessage::SnapshotNameChanged(v)))
+                .padding(10);
+
+            let snap_actions = Row::new()
                 .spacing(10)
+                .push(if busy {
+                    ui::card(t, text("Create Snapshot (busy)").size(12).color(t.muted_fg).into())
+                } else {
+                    ui::primary_button(
+                        t,
+                        "Create Snapshot".to_string(),
+                        Message::Universe(UniverseMessage::SnapshotCreate(universe_id.to_string())),
+                    )
+                })
                 .push(ui::outline_button(
                     t,
-                    "Cancel".to_string(),
-                    Message::Universe(UniverseMessage::ResetDemoCancel),
+                    "Refresh".to_string(),
+                    Message::Universe(UniverseMessage::SnapshotRefresh(universe_id.to_string())),
                 ))
-                .push(ui::primary_button(
-                    t,
-                    label,
-                    Message::Universe(UniverseMessage::ResetDemoConfirm),
-                ))
-        } else {
-            Row::new()
+                .push(if busy || state.integrity_busy {
+                    ui::card(t, text("Validate (busy)").size(12).color(t.muted_fg).into())
+                } else {
+                    ui::outline_button(
+                        t,
+                        "Validate Integrity".to_string(),
+                        Message::Universe(UniverseMessage::ValidateUniverse(universe_id.to_string())),
+                    )
+                });
+
+            let mut snap_list = Column::new().spacing(6);
+            if state.snapshots.is_empty() {
+                snap_list = snap_list.push(text("No snapshots yet.").size(12).color(t.muted_fg));
+            } else {
+                for s in state.snapshots.iter().take(8) {
+                    let row = Row::new()
+                        .spacing(10)
+                        .push(text(format!("{}  —  {}", s.name, s.created_at)).size(12).color(t.foreground))
+                        .push(if busy {
+                            ui::card(t, text("Restore (busy)").size(12).color(t.muted_fg).into())
+                        } else {
+                            ui::outline_button(
+                                t,
+                                "Restore".to_string(),
+                                Message::Universe(UniverseMessage::SnapshotRestore(s.id.clone())),
+                            )
+                        })
+                        .push(if busy {
+                            ui::card(t, text("Delete (busy)").size(12).color(t.muted_fg).into())
+                        } else {
+                            ui::danger_button(
+                                t,
+                                "Delete".to_string(),
+                                Message::Universe(UniverseMessage::SnapshotDelete(s.id.clone())),
+                            )
+                        });
+
+                    snap_list = snap_list.push(ui::card(t, row.into()));
+                }
+            }
+
+            let snapshots_section = Column::new()
                 .spacing(10)
-                .push(text("Choose a reset option above.").size(12).color(t.muted_fg))
-        };
+                .push(text("Snapshots").size(12).color(t.muted_fg))
+                .push(snap_input)
+                .push(snap_actions)
+                .push(snap_list);
 
-        let debug_zone = Column::new()
-            .spacing(10)
-            .push(text("Developer Options (Arhelis only)").size(12).color(t.muted_fg))
-            .push(inject_row)
-            .push(reset_row)
-            .push(confirm_row);
+            // Existing Arhelis tools
+            let inject_row = Row::new()
+                .spacing(10)
+                .push(if busy {
+                    ui::card(
+                        t,
+                        text("Inject Demo Data (busy)").size(12).color(t.muted_fg).into(),
+                    )
+                } else {
+                    ui::primary_button(
+                        t,
+                        "Inject Demo Data".to_string(),
+                        Message::Universe(UniverseMessage::InjectDemoData(universe_id.to_string())),
+                    )
+                });
 
-        body = body
-            .push(ui::h_divider(t))
-            .push(debug_zone);
+            let reset_row = if busy {
+                Column::new()
+                    .spacing(6)
+                    .push(text("Dev Tools locked (DB busy).").size(12).color(t.muted_fg))
+                    .push(
+                        Row::new()
+                            .spacing(10)
+                            .push(ui::card(t, text("Reset ALL (busy)").size(12).color(t.muted_fg).into()))
+                            .push(ui::card(t, text("Reset Timeline (busy)").size(12).color(t.muted_fg).into()))
+                            .push(ui::card(t, text("Reset Locations (busy)").size(12).color(t.muted_fg).into()))
+                            .push(ui::card(t, text("Reset Bestiary (busy)").size(12).color(t.muted_fg).into()))
+                            .push(ui::card(t, text("Reset PM Tools (busy)").size(12).color(t.muted_fg).into()))
+                    )
+            } else {
+                Column::new()
+                    .spacing(6)
+                    .push(
+                        Row::new()
+                            .spacing(10)
+                            .push(ui::danger_button(
+                                t,
+                                "Reset ALL".to_string(),
+                                Message::Universe(UniverseMessage::ResetDemoPrompt(universe_id.to_string(), DemoResetScope::All)),
+                            ))
+                            .push(ui::outline_button(
+                                t,
+                                "Reset Timeline".to_string(),
+                                Message::Universe(UniverseMessage::ResetDemoPrompt(universe_id.to_string(), DemoResetScope::Timeline)),
+                            ))
+                            .push(ui::outline_button(
+                                t,
+                                "Reset Locations".to_string(),
+                                Message::Universe(UniverseMessage::ResetDemoPrompt(universe_id.to_string(), DemoResetScope::Locations)),
+                            ))
+                            .push(ui::outline_button(
+                                t,
+                                "Reset Bestiary".to_string(),
+                                Message::Universe(UniverseMessage::ResetDemoPrompt(universe_id.to_string(), DemoResetScope::Bestiary)),
+                            ))
+                            .push(ui::outline_button(
+                                t,
+                                "Reset PM Tools".to_string(),
+                                Message::Universe(UniverseMessage::ResetDemoPrompt(universe_id.to_string(), DemoResetScope::PmTools)),
+                            ))
+                    )
+            };
+
+            let confirm_row = if busy {
+                Row::new().spacing(10).push(text("Confirm disabled (busy).").size(12).color(t.muted_fg))
+            } else if is_pending_reset {
+                let label = format!("Confirm Reset {}", scope_label(pending_scope.unwrap()));
+                Row::new()
+                    .spacing(10)
+                    .push(ui::outline_button(
+                        t,
+                        "Cancel".to_string(),
+                        Message::Universe(UniverseMessage::ResetDemoCancel),
+                    ))
+                    .push(ui::primary_button(
+                        t,
+                        label,
+                        Message::Universe(UniverseMessage::ResetDemoConfirm),
+                    ))
+            } else {
+                Row::new()
+                    .spacing(10)
+                    .push(text("Choose a reset option above.").size(12).color(t.muted_fg))
+            };
+
+            let dev_body = Column::new()
+                .spacing(14)
+                .push(qa)
+                .push(snapshots_section)
+                .push(text("Demo Data Tools").size(12).color(t.muted_fg))
+                .push(inject_row)
+                .push(reset_row)
+                .push(confirm_row);
+
+            body = body.push(dev_body);
+        }
     }
 
-    body = body.width(Length::Fill);
-    ui::page_padding(body.into())
+    ui::page_padding(body.width(Length::Fill).into())
 }
