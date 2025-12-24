@@ -178,6 +178,7 @@ impl App {
                             self.state.loaded_creatures_universe = None;
                             self.state.loaded_locations_universe = None;
                             self.state.loaded_timeline_universe = None;
+                            self.state.loaded_snapshots_universe = None; // <-- ADD THIS
                             self.state.pm_data = None;
 
                             if let Some(action) = inflight {

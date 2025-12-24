@@ -67,7 +67,6 @@ pub fn universe_detail<'a>(state: &'a AppState, t: ui::Tokens, universe_id: &'a 
         .push(ui::h_divider(t))
         .push(tools);
 
-    // Developer Options: ONLY show for Arhelis
     if is_arhelis {
         let dev_header = Row::new()
             .spacing(10)
@@ -82,7 +81,6 @@ pub fn universe_detail<'a>(state: &'a AppState, t: ui::Tokens, universe_id: &'a 
         body = body.push(ui::h_divider(t)).push(dev_header);
 
         if state.dev_panel_open {
-            // Status + QA (moved inside dev panel)
             let qa = ui::card(
                 t,
                 Column::new()
@@ -93,11 +91,11 @@ pub fn universe_detail<'a>(state: &'a AppState, t: ui::Tokens, universe_id: &'a 
                     .into(),
             );
 
-            // Snapshots UI
             let snap_input = text_input("Snapshot name", &state.snapshot_name)
                 .on_input(|v| Message::Universe(UniverseMessage::SnapshotNameChanged(v)))
                 .padding(10);
 
+            // ✅ Removed "Refresh" button
             let snap_actions = Row::new()
                 .spacing(10)
                 .push(if busy {
@@ -109,11 +107,6 @@ pub fn universe_detail<'a>(state: &'a AppState, t: ui::Tokens, universe_id: &'a 
                         Message::Universe(UniverseMessage::SnapshotCreate(universe_id.to_string())),
                     )
                 })
-                .push(ui::outline_button(
-                    t,
-                    "Refresh".to_string(),
-                    Message::Universe(UniverseMessage::SnapshotRefresh(universe_id.to_string())),
-                ))
                 .push(if busy || state.integrity_busy {
                     ui::card(t, text("Validate (busy)").size(12).color(t.muted_fg).into())
                 } else {
@@ -162,14 +155,10 @@ pub fn universe_detail<'a>(state: &'a AppState, t: ui::Tokens, universe_id: &'a 
                 .push(snap_actions)
                 .push(snap_list);
 
-            // Existing Arhelis tools
             let inject_row = Row::new()
                 .spacing(10)
                 .push(if busy {
-                    ui::card(
-                        t,
-                        text("Inject Demo Data (busy)").size(12).color(t.muted_fg).into(),
-                    )
+                    ui::card(t, text("Inject Demo Data (busy)").size(12).color(t.muted_fg).into())
                 } else {
                     ui::primary_button(
                         t,
