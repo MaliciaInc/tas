@@ -39,46 +39,32 @@ impl ProjectManager {
                 }
             }
         }
-
-        let default_db = Self::get_data_dir().join("tas.db");
-        if default_db.exists() {
-            let p = Project {
-                id: Uuid::new_v4().to_string(),
-                name: "Arhelis (Default)".to_string(),
-                path: default_db.to_string_lossy().to_string(),
-                last_opened: Local::now(),
-                created_at: Local::now(),
-            };
-            let _ = Self::save_projects(&[p.clone()]);
-            return vec![p];
-        }
-
-        Vec::new()
+        vec![]
     }
 
-    pub fn save_projects(projects: &[Project]) -> Result<(), String> {
-        let dir = Self::get_config_dir();
-        if !dir.exists() {
-            fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    fn save_projects(projects: &[Project]) -> Result<(), String> {
+        let path = Self::get_manifest_path();
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
         }
-        let json = serde_json::to_string_pretty(projects).map_err(|e| e.to_string())?;
-        fs::write(Self::get_manifest_path(), json).map_err(|e| e.to_string())?;
+        let content = serde_json::to_string_pretty(projects).map_err(|e| e.to_string())?;
+        fs::write(path, content).map_err(|e| e.to_string())?;
         Ok(())
     }
 
     pub fn create_project(name: String) -> Result<Project, String> {
         let data_dir = Self::get_data_dir();
-        if !data_dir.exists() {
-            fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
-        }
+        fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
 
         let safe_name: String = name.chars()
-            .map(|x| if x.is_alphanumeric() { x } else { '_' })
+            .map(|c| if c.is_alphanumeric() { c } else { '_' })
             .collect();
 
-        let filename = format!("tas_{}_{}.db", safe_name, Uuid::new_v4().simple().to_string().get(0..6).unwrap_or("000"));
-        let db_path = data_dir.join(filename);
+        // Por defecto creamos .universe (para mantener compatibilidad total)
+        let filename = format!("{}.universe", safe_name);
+        let db_path = data_dir.join(&filename);
 
+        // Creamos el struct TAL CUAL LO TIENES (sin campos nuevos)
         let project = Project {
             id: Uuid::new_v4().to_string(),
             name,
@@ -102,24 +88,24 @@ impl ProjectManager {
         let _ = Self::save_projects(&projects);
     }
 
-    // NUEVO: Función para borrar proyecto
     pub fn delete_project(id: &str) -> Result<(), String> {
         let mut projects = Self::load_projects();
 
-        // 1. Encontrar el proyecto para obtener el path
         if let Some(pos) = projects.iter().position(|p| p.id == id) {
             let p = &projects[pos];
             let path = PathBuf::from(&p.path);
 
-            // 2. Intentar borrar el archivo físico (si existe)
             if path.exists() {
-                let _ = fs::remove_file(path); // Ignoramos error si está en uso por ahora
+                if let Err(e) = fs::remove_file(path) {
+                    return Err(format!("Could not delete file: {}", e));
+                }
             }
 
-            // 3. Eliminar de la lista
             projects.remove(pos);
             Self::save_projects(&projects)?;
+            Ok(())
+        } else {
+            Err("Project not found in manifest".to_string())
         }
-        Ok(())
     }
 }

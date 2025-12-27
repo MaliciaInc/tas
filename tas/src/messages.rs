@@ -1,6 +1,6 @@
 use iced::widget::text_editor;
 use crate::app::Route;
-use crate::model::{Creature, Universe, Card, KanbanBoardData, Board, Location, TimelineEvent, TimelineEra, Project, UniverseSnapshot};
+use crate::model::{Creature, Universe, Card, KanbanBoardData, Board, Location, TimelineEvent, TimelineEra, Project, UniverseSnapshot, Story, Scene};
 use crate::state::DemoResetScope;
 
 #[derive(Debug, Clone)]
@@ -23,21 +23,16 @@ pub enum BestiaryMessage {
 pub enum UniverseMessage {
     NameChanged(String), DescChanged(String), Create, Delete(String), Open(String),
     InjectDemoData(String),
-
     ResetDemoPrompt(String, DemoResetScope),
     ResetDemoConfirm,
     ResetDemoCancel,
-
     ToggleDeveloperPanel,
-
     ToggleDebugOverlay,
-
     SnapshotNameChanged(String),
     SnapshotCreate(String),
     SnapshotRefresh(String),
     SnapshotRestore(String),
     SnapshotDelete(String),
-
     ValidateUniverse(String),
 }
 
@@ -69,13 +64,29 @@ pub enum WorkspaceMessage {
 }
 
 #[derive(Debug, Clone)]
+pub enum TheForgeMessage {
+    Open(String),
+    UniverseChanged(String), // NUEVO
+    CreateStory,
+    DeleteStory(String),
+    SelectStory(String),
+    CreateScene,
+    DeleteScene(String),
+    SelectScene(String),
+    StoryTitleChanged(String),
+    SceneTitleChanged(String),
+    SceneBodyChanged(text_editor::Action),
+    SaveCurrentScene,
+}
+
+#[derive(Debug, Clone)]
 pub enum Message {
     Navigate(Route), MouseMoved(iced::Point), MouseReleased,
     Tick(std::time::Instant),
     ToastDismiss(u64),
 
     Pm(PmMessage), Bestiary(BestiaryMessage), Universe(UniverseMessage), Locations(LocationsMessage),
-    Timeline(TimelineMessage), Workspace(WorkspaceMessage),
+    Timeline(TimelineMessage), Workspace(WorkspaceMessage), TheForge(TheForgeMessage),
 
     UniversesFetched(Result<Vec<Universe>, String>),
     CreaturesFetched(Result<Vec<Creature>, String>),
@@ -83,6 +94,10 @@ pub enum Message {
     PmBoardFetched(Result<KanbanBoardData, String>),
     LocationsFetched(Result<Vec<Location>, String>),
     TimelineFetched(Result<(Vec<TimelineEvent>, Vec<TimelineEra>), String>),
+
+    // --- FORGE RESULTS ---
+    StoriesFetched(Result<Vec<Story>, String>),
+    ScenesFetched(Result<Vec<Scene>, String>),
 
     SnapshotsFetched(Result<Vec<UniverseSnapshot>, String>),
     SchemaVersionFetched(Result<i64, String>),

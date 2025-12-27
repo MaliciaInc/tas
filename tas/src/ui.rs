@@ -6,10 +6,7 @@ use iced::widget::{button, container, text, Column, Row, Space};
 use crate::app::{AppState, Message, Route, APP_NAME};
 use crate::state::{Toast, ToastKind};
 
-// ... (El resto de tus estilos y tokens se quedan EXACTAMENTE IGUALES. Copia Tokens, Icons, etc. de tu archivo viejo)
-// SOLO AGREGARÉ EL OVERLAY AL FINAL
-
-// --- [INICIO DE TOKENS Y ESTILOS VIEJOS - NO CAMBIADOS] ---
+// --- [TOKENS Y ESTILOS VIEJOS SE MANTIENEN IGUALES] ---
 pub type E<'a> = Element<'a, Message>;
 const APP_SLOGAN: &str = "Where Reality Begins.";
 #[derive(Debug, Clone, Copy)]
@@ -91,53 +88,57 @@ fn icon_path_for(key: NavKey) -> &'static str { match key { NavKey::Overview => 
 fn group_label<'a>(label: &'a str, t: Tokens) -> E<'a> { container(text(label).size(11).color(alpha(t.muted_fg, 0.6))).width(Length::Fill).padding(Padding { top: 16.0, right: 16.0, bottom: 8.0, left: 16.0 }).into() }
 fn nav_button_style(t: Tokens, active: bool, status: iced::widget::button::Status) -> iced::widget::button::Style { let mut s = iced::widget::button::Style::default(); if active { s.background = Some(Background::Color(alpha(t.accent, 0.10))); s.text_color = t.foreground; } else { let bg = match status { iced::widget::button::Status::Hovered => t.hover_bg, iced::widget::button::Status::Pressed => t.active_bg, _ => Color::TRANSPARENT }; s.background = Some(Background::Color(bg)); s.text_color = t.muted_fg; } s.border = Border { color: Color::TRANSPARENT, width: 0.0, radius: border::Radius::from(8.0) }; s }
 fn nav_item<'a>(t: Tokens, label: &'a str, key: NavKey, on_press: Message, active: bool) -> E<'a> { let icon_color = if active { t.accent } else { alpha(t.muted_fg, 0.8) }; let icon = container(svg_icon(icon_path_for(key), icon_color)).width(Length::Fixed(20.0)).align_x(Alignment::Center); let label_widget = text(label).size(14).color(if active { t.foreground } else { t.muted_fg }); let inner = Row::new().spacing(12).align_y(Alignment::Center).push(icon).push(label_widget); Element::new( button(container(inner).width(Length::Fill).height(Length::Fill).align_y(Alignment::Center).padding([0, 12])).width(Length::Fill).height(Length::Fixed(40.0)).style(move |_: &Theme, status| nav_button_style(t, active, status)).on_press(on_press) ) }
-pub fn sidebar<'a>(state: &'a AppState, t: Tokens) -> E<'a> { let mut modules = Column::new().spacing(4).width(Length::Fill); modules = modules.push(group_label("MODULES", t)).push(nav_item(t, "Overview", NavKey::Overview, Message::Navigate(Route::Overview), is_active(state, NavKey::Overview))).push(nav_item(t, "Workspaces", NavKey::Workspaces, Message::Workspace(crate::messages::WorkspaceMessage::CloseProject), is_active(state, NavKey::Workspaces))).push(nav_item(t, "Universe", NavKey::Universe, Message::Navigate(Route::UniverseList), is_active(state, NavKey::Universe))).push(nav_item(t, "The Forge", NavKey::Forge, Message::Navigate(Route::Forge), is_active(state, NavKey::Forge))).push(nav_item(t, "PM Tools", NavKey::PmTools, Message::Navigate(Route::PmList), is_active(state, NavKey::PmTools))).push(nav_item(t, "Assets", NavKey::Assets, Message::Navigate(Route::Assets), is_active(state, NavKey::Assets))); let mut account = Column::new().spacing(4).width(Length::Fill); account = account.push(nav_item(t, "Settings", NavKey::Settings, Message::Navigate(Route::Account), is_active(state, NavKey::Settings))); let inner_content = Column::new().width(Length::Fill).height(Length::Fill).push(modules).push(container(Space::new()).height(Length::Fill)).push(account).padding(Padding { top: 10.0, right: 12.0, bottom: 20.0, left: 12.0 }).spacing(10); Element::new( container(inner_content).width(Length::Fill).height(Length::Fill).style(move |_: &Theme| { let mut s = container_style(t.sidebar_bg, t.foreground); s.border = Border { color: Color::TRANSPARENT, width: 0.0, radius: border::Radius::from(0.0) }; s }) ) }
+
+pub fn sidebar<'a>(state: &'a AppState, t: Tokens) -> E<'a> {
+    let mut modules = Column::new().spacing(4).width(Length::Fill);
+    modules = modules
+        .push(group_label("MODULES", t))
+        .push(nav_item(t, "Overview", NavKey::Overview, Message::Navigate(Route::Overview), is_active(state, NavKey::Overview)))
+        .push(nav_item(t, "Workspaces", NavKey::Workspaces, Message::Workspace(crate::messages::WorkspaceMessage::CloseProject), is_active(state, NavKey::Workspaces)))
+        .push(nav_item(t, "Universe", NavKey::Universe, Message::Navigate(Route::UniverseList), is_active(state, NavKey::Universe)))
+        // CAMBIO CRÍTICO: Enviamos "" para que el controller active el modo Standalone
+        .push(nav_item(t, "The Forge", NavKey::Forge, Message::TheForge(crate::messages::TheForgeMessage::Open("".to_string())), is_active(state, NavKey::Forge)))
+        .push(nav_item(t, "PM Tools", NavKey::PmTools, Message::Navigate(Route::PmList), is_active(state, NavKey::PmTools)))
+        .push(nav_item(t, "Assets", NavKey::Assets, Message::Navigate(Route::Assets), is_active(state, NavKey::Assets)));
+
+    let mut account = Column::new().spacing(4).width(Length::Fill);
+    account = account.push(nav_item(t, "Settings", NavKey::Settings, Message::Navigate(Route::Account), is_active(state, NavKey::Settings)));
+
+    let inner_content = Column::new().width(Length::Fill).height(Length::Fill)
+        .push(modules)
+        .push(container(Space::new()).height(Length::Fill))
+        .push(account)
+        .padding(Padding { top: 10.0, right: 12.0, bottom: 20.0, left: 12.0 })
+        .spacing(10);
+
+    Element::new(
+        container(inner_content).width(Length::Fill).height(Length::Fill).style(move |_: &Theme| {
+            let mut s = container_style(t.sidebar_bg, t.foreground);
+            s.border = Border { color: Color::TRANSPARENT, width: 0.0, radius: border::Radius::from(0.0) };
+            s
+        })
+    )
+}
+
 fn workspace_pill(t: Tokens, label: String) -> Element<'static, Message> { container(text(label).size(12).color(t.foreground)).padding([6, 12]).style(move |_: &Theme| { let mut s = container_style(alpha(Color::from_rgba8(0xFF, 0xFF, 0xFF, 1.0), 0.04), t.foreground); s.border = Border { color: alpha(Color::from_rgba8(0xFF, 0xFF, 0xFF, 1.0), 0.1), width: 1.0, radius: border::Radius::from(999.0) }; s }).into() }
 pub fn header<'a>(state: &'a AppState, t: Tokens) -> E<'a> { let ws_name = state.active_project.as_ref().map(|p| p.name.clone()).unwrap_or("Launcher".to_string()); let brand = Column::new().spacing(0).push(text(APP_NAME).size(15).color(t.foreground)).push(text(APP_SLOGAN).size(12).color(alpha(t.muted_fg, 0.7))); let right = Row::new().spacing(12).align_y(Alignment::Center).push(workspace_pill(t, ws_name)); let bar = Row::new().align_y(Alignment::Center).push(container(brand).width(Length::Fill)).push(right).padding(Padding { top: 16.0, right: 32.0, bottom: 16.0, left: 32.0 }); Element::new( container(bar).width(Length::Fill).style(move |_: &Theme| container_style(Color::TRANSPARENT, t.foreground)) ) }
 pub fn recents_card_universe<'a>(t: Tokens) -> E<'a> { card(t, Column::new().push(text("Arhelis (Universe)").size(14).color(t.foreground)).into()) }
 pub fn recents_card_forge<'a>(t: Tokens) -> E<'a> { card(t, Column::new().push(text("Chapter 1: The Awakening").size(14).color(t.foreground)).into()) }
 
-// --- [NUEVO] TOAST OVERLAY ---
-
 pub fn toasts_overlay<'a>(t: Tokens, toasts: &'a [Toast]) -> E<'a> {
     let mut col = Column::new().spacing(10);
-
     for toast in toasts {
         let (bg, icon) = match toast.kind {
             ToastKind::Info => (t.shell_b, "ℹ"),
-            ToastKind::Success => (Color::from_rgb8(22, 101, 52), "✓"), // Green-ish
-            ToastKind::Error => (Color::from_rgb8(153, 27, 27), "!"), // Red-ish
+            ToastKind::Success => (Color::from_rgb8(22, 101, 52), "✓"),
+            ToastKind::Error => (Color::from_rgb8(153, 27, 27), "!"),
         };
-
-        let content = Row::new()
-            .align_y(Alignment::Center)
-            .spacing(12)
+        let content = Row::new().align_y(Alignment::Center).spacing(12)
             .push(text(icon).size(16).color(t.foreground))
             .push(text(&toast.message).size(14).color(t.foreground).width(Length::Fill))
-            .push(
-                button(text("×").size(16).color(t.muted_fg))
-                    .style(ghost_button_style(t))
-                    .on_press(Message::ToastDismiss(toast.id))
-            );
-
-        let card = container(content)
-            .width(Length::Fixed(320.0))
-            .padding(12)
-            .style(move |_| {
-                let mut s = container_style(bg, t.foreground);
-                s.border = Border { color: t.border, width: 1.0, radius: border::Radius::from(8.0) };
-                s.shadow = Shadow { color: Color::BLACK, offset: Vector::new(0.0, 4.0), blur_radius: 12.0 };
-                s
-            });
-
+            .push(button(text("×").size(16).color(t.muted_fg)).style(ghost_button_style(t)).on_press(Message::ToastDismiss(toast.id)));
+        let card = container(content).width(Length::Fixed(320.0)).padding(12).style(move |_| { let mut s = container_style(bg, t.foreground); s.border = Border { color: t.border, width: 1.0, radius: border::Radius::from(8.0) }; s.shadow = Shadow { color: Color::BLACK, offset: Vector::new(0.0, 4.0), blur_radius: 12.0 }; s });
         col = col.push(card);
     }
-
-    container(col)
-        .padding(20)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_x(iced::alignment::Horizontal::Right)
-        .align_y(iced::alignment::Vertical::Bottom)
-        .into()
+    container(col).padding(20).width(Length::Fill).height(Length::Fill).align_x(iced::alignment::Horizontal::Right).align_y(iced::alignment::Vertical::Bottom).into()
 }

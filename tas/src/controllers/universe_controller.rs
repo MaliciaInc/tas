@@ -52,24 +52,44 @@ pub fn update(state: &mut AppState, message: UniverseMessage) {
         }
 
         UniverseMessage::SnapshotNameChanged(v) => state.snapshot_name = v,
+
         UniverseMessage::SnapshotCreate(universe_id) => {
             let name = state.snapshot_name.trim().to_string();
             if !name.is_empty() {
+                // Mark snapshots as stale so the list auto-reloads after the DB action completes.
+                state.loaded_snapshots_universe = None;
+
                 state.queue(DbAction::SnapshotCreate { universe_id, name });
                 state.snapshot_name.clear();
                 state.show_toast("Creating snapshot...", ToastKind::Info);
             }
         }
+
         UniverseMessage::SnapshotRefresh(universe_id) => {
             state.loaded_snapshots_universe = None;
             state.show_toast("Refreshing snapshots...", ToastKind::Info);
             state.route = crate::app::Route::UniverseDetail { universe_id };
         }
+
         UniverseMessage::SnapshotRestore(snapshot_id) => {
+            // Restore affects universe data; mark caches dirty so UI refreshes.
+            state.loaded_creatures_universe = None;
+            state.loaded_locations_universe = None;
+            state.loaded_timeline_universe = None;
+            state.loaded_snapshots_universe = None;
+
             state.queue(DbAction::SnapshotRestore { snapshot_id });
             state.show_toast("Restoring snapshot...", ToastKind::Info);
         }
+
         UniverseMessage::SnapshotDelete(snapshot_id) => {
+            // Optimistic UI: remove immediately; DB action will confirm.
+            let sid = snapshot_id.clone();
+            state.snapshots.retain(|s| s.id != sid);
+
+            // Ensure snapshots refetch on the next tick (also fixes UI if DB delete fails).
+            state.loaded_snapshots_universe = None;
+
             state.queue(DbAction::SnapshotDelete { snapshot_id });
             state.show_toast("Deleting snapshot...", ToastKind::Info);
         }

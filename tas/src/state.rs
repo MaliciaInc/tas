@@ -1,8 +1,10 @@
 use std::time::Instant;
 use std::collections::{HashSet, VecDeque};
+use iced::widget::text_editor; // Importante para el editor
 
 use crate::model::{
-    Creature, Universe, Card, KanbanBoardData, Board, Location, TimelineEvent, TimelineEra, Project, UniverseSnapshot
+    Creature, Universe, Card, KanbanBoardData, Board, Location, TimelineEvent, TimelineEra, Project, UniverseSnapshot,
+    Story, Scene
 };
 use crate::app::{Route, PmState};
 use crate::editors::{CreatureEditor, LocationEditor, EventEditor, EraEditor};
@@ -44,7 +46,18 @@ pub enum DbAction {
 
     SaveCard(Card),
     MoveCard(String, String, f64),
+    RebalanceColumn(String),
     DeleteCard(String),
+
+    // --- THE FORGE ACTIONS ---
+    CreateStory(String, String),
+    UpdateStory(Story),
+    DeleteStory(String),
+
+    CreateScene(String, String),
+    UpdateScene(Scene),
+    DeleteScene(String),
+    ReorderScene(String, i64),
 }
 
 #[derive(Debug, Clone)]
@@ -94,6 +107,7 @@ pub struct AppState {
     pub loaded_locations_universe: Option<String>,
     pub loaded_timeline_universe: Option<String>,
     pub loaded_snapshots_universe: Option<String>,
+    pub loaded_forge_universe: Option<String>,
 
     pub data_dirty: bool,
 
@@ -101,6 +115,13 @@ pub struct AppState {
     pub locations: Vec<Location>,
     pub timeline_events: Vec<TimelineEvent>,
     pub timeline_eras: Vec<TimelineEra>,
+
+    // --- THE FORGE STATE ---
+    pub stories: Vec<Story>,
+    pub active_story_id: Option<String>,
+    pub active_story_scenes: Vec<Scene>,
+    pub active_scene_id: Option<String>,
+    pub forge_content: text_editor::Content, // <--- EL ESTADO DEL EDITOR VISUAL
 
     pub boards_list: Vec<Board>,
     pub new_board_name: String,
@@ -160,6 +181,7 @@ impl Default for AppState {
             loaded_locations_universe: None,
             loaded_timeline_universe: None,
             loaded_snapshots_universe: None,
+            loaded_forge_universe: None,
 
             data_dirty: false,
 
@@ -167,6 +189,13 @@ impl Default for AppState {
             locations: vec![],
             timeline_events: vec![],
             timeline_eras: vec![],
+
+            // Forge Init
+            stories: vec![],
+            active_story_id: None,
+            active_story_scenes: vec![],
+            active_scene_id: None,
+            forge_content: text_editor::Content::new(),
 
             boards_list: vec![],
             new_board_name: String::new(),

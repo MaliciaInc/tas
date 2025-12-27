@@ -2,7 +2,23 @@ use sqlx::FromRow;
 use std::fmt;
 use serde::{Serialize, Deserialize};
 
+// --- [NUEVO] ENUM PARA IDENTIDAD (AGREGADO AL INICIO) ---
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectKind {
+    Universe,
+    Novel,
+    Board,
+}
+
+impl Default for ProjectKind {
+    fn default() -> Self {
+        Self::Universe
+    }
+}
+
 // --- PROJECTS (WORKSPACES) ---
+// [INTACTO] Tu struct original se queda igual.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Project {
     pub id: String,
@@ -12,6 +28,19 @@ pub struct Project {
     pub created_at: chrono::DateTime<chrono::Local>,
 }
 
+// [NUEVO] Lógica calculada: No cambiamos los datos, solo preguntamos.
+impl Project {
+    pub fn get_kind(&self) -> ProjectKind {
+        if self.path.ends_with(".novel") {
+            ProjectKind::Novel
+        } else if self.path.ends_with(".pmboard") {
+            ProjectKind::Board
+        } else {
+            ProjectKind::Universe
+        }
+    }
+}
+
 // --- UNIVERSE & BESTIARY ---
 #[derive(Debug, Clone, FromRow, PartialEq, Serialize, Deserialize)]
 pub struct Universe {
@@ -19,6 +48,13 @@ pub struct Universe {
     pub name: String,
     pub description: String,
     pub archived: bool,
+}
+
+// NECESARIO PARA PICK LIST
+impl fmt::Display for Universe {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
 }
 
 #[derive(Debug, Clone, FromRow, PartialEq, Serialize, Deserialize)]
@@ -112,6 +148,32 @@ pub struct KanbanBoardData {
     pub columns: Vec<(BoardColumn, Vec<Card>)>,
 }
 
+// --- THE FORGE (NARRATIVE) ---
+#[derive(Debug, Clone, FromRow, PartialEq, Serialize, Deserialize)]
+pub struct Story {
+    pub id: String,
+    pub universe_id: String,
+    pub title: String,
+    #[sqlx(default)]
+    pub synopsis: String,
+    #[sqlx(default)]
+    pub status: String,
+}
+
+#[derive(Debug, Clone, FromRow, PartialEq, Serialize, Deserialize)]
+pub struct Scene {
+    pub id: String,
+    pub story_id: String,
+    pub title: String,
+    #[sqlx(default)]
+    pub body: String,
+    pub position: i64,
+    #[sqlx(default)]
+    pub status: String,
+    #[sqlx(default)]
+    pub word_count: i64,
+}
+
 // --- SNAPSHOTS ---
 #[derive(Debug, Clone, FromRow, PartialEq)]
 pub struct UniverseSnapshot {
@@ -121,7 +183,6 @@ pub struct UniverseSnapshot {
     pub created_at: String,
 }
 
-// Payload stored as JSON in DB
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UniverseSnapshotPayload {
     pub universe: Universe,
@@ -129,5 +190,5 @@ pub struct UniverseSnapshotPayload {
     pub locations: Vec<Location>,
     pub timeline_eras: Vec<TimelineEra>,
     pub timeline_events: Vec<TimelineEvent>,
-    pub pm_cards: Vec<Card>, // system board cards (board-main)
+    pub pm_cards: Vec<Card>,
 }
